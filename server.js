@@ -7,14 +7,27 @@ const server = net.createServer((socket) => {
 		const dataArr = data.toString().split("\r\n"),
 			reqLine = dataArr[0].split(" "),
 			route = reqLine[1],
-			versionStr = reqLine[2],
+			method = reqLine[0],
 			headers = dataArr.slice(1, 4).join("\r\n");
+		const isHead = method === "HEAD";
+
+		if (method !== "GET" && method !== "HEAD") {
+			sendResponse(
+				socket,
+				405,
+				"Method Not Allowed",
+				"text/plain",
+				false,
+				"Allow: GET, HEAD\r\n",
+			);
+			return;
+		}
 
 		if (route === "/") {
 			const fileContent = fs.readFileSync("./root.html", "utf-8");
-			sendResponse(socket, versionStr, 200, fileContent, "text/html");
+			sendResponse(socket, 200, fileContent, "text/html", isHead);
 		} else if (route === "/health") {
-			sendResponse(socket, versionStr, 200, "ok", "text/plain");
+			sendResponse(socket, 200, "ok", "text/plain", isHead);
 		} else {
 			const filepath = "./files" + route;
 			try {
@@ -26,28 +39,30 @@ const server = net.createServer((socket) => {
 					if (fileContent === "") {
 						sendResponse(
 							socket,
-							versionStr,
 							200,
-							"This file is empty",
+							"This file is empty!",
 							"text/plain",
+							isHead,
 						);
 					} else {
-						sendResponse(
-							socket,
-							versionStr,
-							200,
-							body,
-							"text/plain",
-						);
+						sendResponse(socket, 200, body, "text/plain", isHead);
 					}
+				} else {
+					sendResponse(
+						socket,
+						404,
+						"File not found!",
+						"text/plain",
+						isHead,
+					);
 				}
 			} catch (err) {
 				sendResponse(
 					socket,
-					versionStr,
 					404,
 					"File not found!",
 					"text/plain",
+					isHead,
 				);
 			}
 		}
@@ -59,18 +74,16 @@ server.listen(port, () => {
 	console.log("Server is listening at port " + port);
 });
 
-function sendResponse(socket, versionStr, status, body, fileType) {
+function sendResponse(socket, statusCode, body, fileType, isHead, extra = "") {
 	const byteSize = Buffer.byteLength(body, "utf-8");
-	let statusText = "";
 
-	if (status === 200) {
-		statusText = "OK";
-	} else if (status === 404) {
-		statusText = "NOT FOUND";
-	}
+	const statusLookup = {
+		200: "OK",
+		404: "Not Found",
+		405: "Method Not Allowed",
+	};
+	const head = `HTTP/1.1 ${statusCode} ${statusLookup[statusCode]}\r\nContent-Type: ${fileType}\r\nContent-Length: ${byteSize}\r\nConnection: close\r\n${extra}\r\n`;
 
-	const response = `${versionStr} ${status} ${statusText}\r\nContent-Type: ${fileType}\r\nContent-Length: ${byteSize}\r\nConnection: close\r\n\r\n${body}`;
-
-	socket.write(response);
+	socket.write(isHead ? head : head + body);
 	socket.end();
 }
