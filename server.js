@@ -1,5 +1,5 @@
 import net from "node:net";
-import fs from "node:fs";
+import fs from "fs";
 const port = 800;
 
 const server = net.createServer((socket) => {
@@ -18,12 +18,28 @@ const server = net.createServer((socket) => {
 		} else {
 			const filepath = "./files" + route;
 			try {
-				if (fs.statSync(filepath).isFile()) {
+				if (fs.existsSync(filepath)) {
 					const fileContent = fs.readFileSync(filepath, "utf-8"),
 						wordsArr = fileContent.split(/\s+/).filter(Boolean),
 						body = `${wordsArr.length}\r\n${wordsArr.join("\r\n")}`;
 
-					sendResponse(socket, versionStr, 200, body, "text/plain");
+					if (fileContent === "") {
+						sendResponse(
+							socket,
+							versionStr,
+							200,
+							"This file is empty",
+							"text/plain",
+						);
+					} else {
+						sendResponse(
+							socket,
+							versionStr,
+							200,
+							body,
+							"text/plain",
+						);
+					}
 				}
 			} catch (err) {
 				sendResponse(
@@ -36,9 +52,8 @@ const server = net.createServer((socket) => {
 			}
 		}
 	});
-    socket.on("error", (err) => console.log("socket error:", err.code));
+	socket.on("error", (err) => console.log("socket error:", err.code));
 });
-
 
 server.listen(port, () => {
 	console.log("Server is listening at port " + port);
