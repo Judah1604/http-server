@@ -1,5 +1,6 @@
 import net from "node:net";
 import fs from "fs";
+import path from "node:path";
 const port = 800;
 const MAX_HEADER = 8192;
 
@@ -52,10 +53,17 @@ const server = net.createServer((socket) => {
 		} else if (route === "/health") {
 			sendResponse(socket, 200, "ok", "text/plain", isHead);
 		} else {
-			const filepath = "./files" + route;
+			const decoded = decodeURIComponent(route),
+				root = path.resolve("./files"),
+				full = path.resolve(root, "." + decoded);
+
+			if (!full.startsWith(root + path.sep)) {
+				sendResponse(socket, 403, "Forbidden", "text/plain");
+			}
+
 			try {
-				if (fs.existsSync(filepath)) {
-					const fileContent = fs.readFileSync(filepath, "utf-8"),
+				if (fs.existsSync(full)) {
+					const fileContent = fs.readFileSync(full, "utf-8"),
 						wordsArr = fileContent.split(/\s+/).filter(Boolean),
 						body = `${wordsArr.length}\r\n${wordsArr.join("\r\n")}`;
 
@@ -105,6 +113,7 @@ function sendResponse(socket, statusCode, body, fileType, isHead, extra = "") {
 
 	const statusLookup = {
 		200: "OK",
+		403: "Forbidden",
 		404: "Not Found",
 		405: "Method Not Allowed",
 		431: "Request Header Fields Too Large",
