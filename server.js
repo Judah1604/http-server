@@ -30,10 +30,19 @@ const server = net.createServer((socket) => {
 
 		const dataArr = buffer.subarray(0, end).toString().split("\r\n"),
 			reqLine = dataArr[0].split(" "),
-			route = reqLine[1],
 			method = reqLine[0],
-			headers = dataArr.slice(1, 4).join("\r\n");
-		const isHead = method === "HEAD";
+			route = reqLine[1],
+			versionStr = reqLine[2],
+			isHead = method === "HEAD";
+
+		if (
+			reqLine.length !== 3 ||
+			route[0] !== "/" ||
+			!/^HTTP\/\d\.\d$/.test(versionStr)
+		) {
+			sendResponse(socket, 400, "Bad Request", "text/plain", isHead);
+			return;
+		}
 
 		if (method !== "GET" && method !== "HEAD") {
 			sendResponse(
@@ -53,32 +62,65 @@ const server = net.createServer((socket) => {
 		} else if (route === "/health") {
 			sendResponse(socket, 200, "ok", "text/plain", isHead);
 		} else {
-			const decoded = decodeURIComponent(route),
-				root = path.resolve("./files"),
-				full = path.resolve(root, "." + decoded);
-
-			if (!full.startsWith(root + path.sep)) {
-				sendResponse(socket, 403, "Forbidden", "text/plain");
-			}
-
 			try {
-				if (fs.existsSync(full)) {
-					const fileContent = fs.readFileSync(full, "utf-8"),
-						wordsArr = fileContent.split(/\s+/).filter(Boolean),
-						body = `${wordsArr.length}\r\n${wordsArr.join("\r\n")}`;
+				const decoded = decodeURIComponent(route),
+					root = path.resolve("./files"),
+					full = path.resolve(root, "." + decoded);
 
-					if (fileContent === "") {
+				if (decoded.includes("\0")) {
+					sendResponse(
+						socket,
+						400,
+						"Bad Request",
+						"text/plain",
+						isHead,
+					);
+					return;
+				}
+				if (!full.startsWith(root + path.sep)) {
+					sendResponse(
+						socket,
+						403,
+						"Forbidden",
+						"text/plain",
+						isHead,
+					);
+					return;
+				}
+
+				try {
+					if (fs.existsSync(full)) {
+						const fileContent = fs.readFileSync(full, "utf-8"),
+							wordsArr = fileContent.split(/\s+/).filter(Boolean),
+							body = `${wordsArr.length}\r\n${wordsArr.join("\r\n")}`;
+
+						if (fileContent === "") {
+							sendResponse(
+								socket,
+								200,
+								"This file is empty!",
+								"text/plain",
+								isHead,
+							);
+						} else {
+							sendResponse(
+								socket,
+								200,
+								body,
+								"text/plain",
+								isHead,
+							);
+						}
+					} else {
 						sendResponse(
 							socket,
-							200,
-							"This file is empty!",
+							404,
+							"File not found!",
 							"text/plain",
 							isHead,
 						);
-					} else {
-						sendResponse(socket, 200, body, "text/plain", isHead);
 					}
-				} else {
+				} catch (err) {
 					sendResponse(
 						socket,
 						404,
@@ -88,13 +130,7 @@ const server = net.createServer((socket) => {
 					);
 				}
 			} catch (err) {
-				sendResponse(
-					socket,
-					404,
-					"File not found!",
-					"text/plain",
-					isHead,
-				);
+				sendResponse(socket, 400, "Bad Request", "text/plain", isHead);
 			}
 		}
 	});
@@ -113,6 +149,7 @@ function sendResponse(socket, statusCode, body, fileType, isHead, extra = "") {
 
 	const statusLookup = {
 		200: "OK",
+		400: "Bad Request",
 		403: "Forbidden",
 		404: "Not Found",
 		405: "Method Not Allowed",

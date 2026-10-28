@@ -1,6 +1,6 @@
 import net from "node:net";
 
-const parts = ["GET /heal", "th HTTP/1.1\r\nHost: x\r\n\r\n"];
+const parts = ["GET /%zz HTTP/1.1\r\n\r\n"];
 
 const s = net.connect(800, "localhost");
 s.on("data", (d) => process.stdout.write(d));
