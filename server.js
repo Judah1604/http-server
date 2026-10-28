@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "node:path";
 const port = 800;
 const MAX_HEADER = 8192;
+const MAX_FILE = 1024 * 1024;
 
 const server = net.createServer((socket) => {
 	let buffer = Buffer.alloc(0);
@@ -99,7 +100,26 @@ const server = net.createServer((socket) => {
 				}
 
 				try {
-					if (fs.existsSync(full)) {
+					const fileData = fs.statSync(full);
+					if (!fileData.isFile()) {
+						sendResponse(
+							socket,
+							404,
+							"File not found!",
+							"text/plain",
+							isHead,
+						);
+						return;
+					} else if (fileData.size > MAX_FILE) {
+						sendResponse(
+							socket,
+							413,
+							"Content Too Large",
+							"text/plain",
+							isHead,
+						);
+						return;
+					} else {
 						const fileContent = fs.readFileSync(full, "utf-8"),
 							wordsArr = fileContent.split(/\s+/).filter(Boolean),
 							body = `${wordsArr.length}\r\n${wordsArr.join("\r\n")}`;
@@ -121,14 +141,6 @@ const server = net.createServer((socket) => {
 								isHead,
 							);
 						}
-					} else {
-						sendResponse(
-							socket,
-							404,
-							"File not found!",
-							"text/plain",
-							isHead,
-						);
 					}
 				} catch (err) {
 					sendResponse(
@@ -164,6 +176,7 @@ function sendResponse(socket, statusCode, body, fileType, isHead, extra = "") {
 		404: "Not Found",
 		405: "Method Not Allowed",
 		408: "Request Timeout",
+		413: "Content Too Large",
 		431: "Request Header Fields Too Large",
 	};
 	const head = `HTTP/1.1 ${statusCode} ${statusLookup[statusCode]}\r\nContent-Type: ${fileType}\r\nContent-Length: ${byteSize}\r\nConnection: close\r\n${extra}\r\n`;
