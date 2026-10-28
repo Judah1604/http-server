@@ -8,6 +8,16 @@ const server = net.createServer((socket) => {
 	let buffer = Buffer.alloc(0);
 	let done = false;
 
+	socket.setTimeout(5000);
+	socket.on("timeout", () => {
+		if (!done) {
+			done = true;
+			sendResponse(socket, 408, "Request Timeout", "text/plain", false);
+		} else {
+			socket.destroy();
+		}
+	});
+
 	socket.on("data", (data) => {
 		if (done) return;
 		buffer = Buffer.concat([buffer, data]);
@@ -153,6 +163,7 @@ function sendResponse(socket, statusCode, body, fileType, isHead, extra = "") {
 		403: "Forbidden",
 		404: "Not Found",
 		405: "Method Not Allowed",
+		408: "Request Timeout",
 		431: "Request Header Fields Too Large",
 	};
 	const head = `HTTP/1.1 ${statusCode} ${statusLookup[statusCode]}\r\nContent-Type: ${fileType}\r\nContent-Length: ${byteSize}\r\nConnection: close\r\n${extra}\r\n`;
