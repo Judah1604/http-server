@@ -1,10 +1,33 @@
 import net from "node:net";
 import fs from "fs";
 const port = 800;
+const MAX_HEADER = 8192;
 
 const server = net.createServer((socket) => {
+	let buffer = Buffer.alloc(0);
+	let done = false;
+
 	socket.on("data", (data) => {
-		const dataArr = data.toString().split("\r\n"),
+		if (done) return;
+		buffer = Buffer.concat([buffer, data]);
+		const end = buffer.indexOf("\r\n\r\n");
+		if (end === -1) {
+			if (buffer.length > MAX_HEADER) {
+				buffer = Buffer.alloc(0);
+				sendResponse(
+					socket,
+					431,
+					"Request Header Fields Too Large",
+					"text/plain",
+					false,
+				);
+				done = true;
+			}
+			return;
+		}
+		done = true;
+
+		const dataArr = buffer.subarray(0, end).toString().split("\r\n"),
 			reqLine = dataArr[0].split(" "),
 			route = reqLine[1],
 			method = reqLine[0],
@@ -67,7 +90,10 @@ const server = net.createServer((socket) => {
 			}
 		}
 	});
-	socket.on("error", (err) => console.log("socket error:", err.code));
+
+	socket.on("error", (err) => {
+		if (err.code !== "ECONNRESET") console.log("socket error:", err.code);
+	});
 });
 
 server.listen(port, () => {
@@ -81,6 +107,7 @@ function sendResponse(socket, statusCode, body, fileType, isHead, extra = "") {
 		200: "OK",
 		404: "Not Found",
 		405: "Method Not Allowed",
+		431: "Request Header Fields Too Large",
 	};
 	const head = `HTTP/1.1 ${statusCode} ${statusLookup[statusCode]}\r\nContent-Type: ${fileType}\r\nContent-Length: ${byteSize}\r\nConnection: close\r\n${extra}\r\n`;
 
